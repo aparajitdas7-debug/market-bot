@@ -2,8 +2,8 @@ name: Run Market Bot Daily
 
 on:
   schedule:
-    # UTC 04:01 = IST (ভারতীয় সময়) সকাল 09:31 AM
-    - cron: '1 4 * * *'
+    # UTC 04:01 = IST (ভারতীয় সময়) সকাল 09:01 AM
+    - cron: '31 3 * * *'
   workflow_dispatch:
 
 jobs:
