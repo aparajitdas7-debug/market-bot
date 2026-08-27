@@ -5,8 +5,8 @@ import requests
 import yfinance as yf
 
 # --- Configuration ---
-TELEGRAM_TOKEN = "YOUR_BOT_TOKEN_HERE"  # Apnar Bot Token boshant
-CHAT_ID = "YOUR_CHAT_ID_HERE"  # Apnar Telegram Chat ID boshant
+TELEGRAM_TOKEN = "8978761813:AAHNrEdRRVrKGuOfRJmSEUo9TMf8xWmywQQ"  # Apnar Bot Token boshant
+CHAT_ID = "6514656533"  # Apnar Telegram Chat ID boshant
 
 # Sob kota international futures index-er ticker list
 INDICES = {
