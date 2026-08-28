@@ -5,8 +5,8 @@ import requests
 import yfinance as yf
 
 # --- Configuration ---
-TELEGRAM_TOKEN = "8978761813:AAHNREdRvrKGuO9TMf8xWmywQQ"
-CHAT_ID = "651465653"
+TELEGRAM_TOKEN = "8978761813:AAHNrEdRRVrKGuOfRJmSEUo9TMf8xWmywQQ"
+CHAT_ID = "6514656533"
 
 INDICES = {
     "US Tech 100 Fut": "NQ=F",
