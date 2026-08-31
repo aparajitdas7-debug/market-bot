@@ -5,16 +5,17 @@ import requests
 import yfinance as yf
 
 # --- Configuration ---
-TELEGRAM_TOKEN = "8978761813:AAHNrEdRRVrKGuOfRJmSEUo9TMf8xWmywQQ"
-CHAT_ID = "6514656533"
+TELEGRAM_TOKEN = "8978761813:AAHNrEdRRVrKGuOfRJmSEUo9TMf8xWmywQQ"  # Apnar Bot Token boshant
+CHAT_ID = "6514656533"  # Apnar Telegram Chat ID boshant
 
+# Sob kota international futures index-er ticker list
 INDICES = {
     "US Tech 100 Fut": "NQ=F",
     "Dow Jones Fut": "YM=F",
     "DAX 40 Fut": "FDAX=F",
     "FTSE 100 Fut": "Z=F",
     "CAC 40 Fut": "FCE=F",
-    "GIFT Nifty Fut": "^NSEI",  # Yahoo-তে Nifty 50 index নির্ভরযোগ্য
+    "GIFT Nifty Fut": "NIFTY_F1.NS",
     "Nikkei 225 Fut": "NK=F",
     "Hang Seng Fut": "HSI=F",
     "China A50 Fut": "CN=F",
@@ -25,68 +26,51 @@ INDICES = {
 }
 
 
-def get_nearest_price(df, target_hour, target_minute=0):
-    """নির্ধারিত সময়ের আশপাশের (±২০ মিনিট) নিকটতম লাইভ প্রাইস খুঁজে বের করে"""
-    if df is None or df.empty:
+def get_price_at_time(df, start_t, end_t):
+    """Nirdisto somoyer madhye price filter kore out kore"""
+    filtered = df.between_time(start_t, end_t)
+    if filtered.empty:
         return None
-    try:
-        ist = pytz.timezone("Asia/Kolkata")
-        latest_date = df.index[-1].date()
-        target_dt = ist.localize(
-            datetime.datetime.combine(
-                latest_date, datetime.time(target_hour, target_minute)
-            )
-        )
-
-        start_window = target_dt - datetime.timedelta(minutes=20)
-        end_window = target_dt + datetime.timedelta(minutes=20)
-
-        sub = df[(df.index >= start_window) & (df.index <= end_window)]
-        if sub.empty:
-            return None
-
-        closest_idx = (sub.index - target_dt).abs().argmin()
-        price = sub["Close"].iloc[closest_idx]
-        if isinstance(price, pd.Series):
-            price = price.iloc[0]
-        return float(price)
-    except Exception:
-        return None
+    return float(filtered["Close"].iloc[-1])
 
 
 def fetch_hourly_futures_data(ticker):
     try:
-        # period='2d' ও interval='2m' ব্যবহার করায় ডেটা মিস হওয়ার ঝুঁকি কম
+        # Timeout 5 sec rakha hoyeche jate code stuck na hoy
         df = yf.download(
-            ticker, period="2d", interval="2m", progress=False, timeout=15
+            ticker, period="1d", interval="1m", progress=False, timeout=5
         )
 
         if df.empty:
             return None
 
+        # MultiIndex columns handle kora
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
 
         df = df.ffill()
 
+        # IST Timezone setup
         ist = pytz.timezone("Asia/Kolkata")
-        if df.index.tz is None:
-            df.index = df.index.tz_localize("UTC").tz_convert(ist)
-        else:
-            df.index = df.index.tz_convert(ist)
+        df.index = df.index.tz_convert(ist)
 
-        p_0700 = get_nearest_price(df, 7, 0)
-        p_0800 = get_nearest_price(df, 8, 0)
-        p_0900 = get_nearest_price(df, 9, 0)
+        # 07:00, 08:00 ebong 09:00 AM-er price ber kora
+        p_0700 = get_price_at_time(df, "06:55", "07:05")
+        p_0800 = get_price_at_time(df, "07:55", "08:05")
+        p_0900 = get_price_at_time(df, "08:55", "09:05")
 
         if p_0700 is None or p_0800 is None or p_0900 is None:
             return None
 
+        # Point differences calculation
         diff_7_to_8 = p_0800 - p_0700
         diff_8_to_9 = p_0900 - p_0800
         total_diff = p_0900 - p_0700
 
         return {
+            "p07": p_0700,
+            "p08": p_0800,
+            "p09": p_0900,
             "diff_1": diff_7_to_8,
             "diff_2": diff_8_to_9,
             "total_diff": total_diff,
@@ -99,6 +83,7 @@ def generate_hourly_report():
     ist = pytz.timezone("Asia/Kolkata")
     now = datetime.datetime.now(ist)
 
+    # Saturday (5) ebong Sunday (6) market bondho thakay bot pause thakbe
     if now.weekday() in [5, 6]:
         return "⚠️ Aj Shoni/Robi bar, Market bondho."
 
