@@ -4,23 +4,24 @@ import pytz
 import requests
 
 # --- Configuration ---
-TELEGRAM_TOKEN = "8978761813:AAHNrEdRRVrKGuOfRJmSEUo9TMf8xWmywQQ"
+TELEGRAM_TOKEN = "8978761813:AAHnREdrVRkGuOFRJmSEUo9TMf8xWmywQQ"
 CHAT_ID = "6514656533"
 
+# Yahoo Finance Active Valid Tickers
 INDICES = {
     "US Tech 100 Fut": "NQ=F",
     "Dow Jones Fut": "YM=F",
-    "DAX 40 Fut": "FDAX=F",
-    "FTSE 100 Fut": "Z=F",
-    "CAC 40 Fut": "FCE=F",
-    "GIFT Nifty Fut": "IN=F",
-    "Nikkei 225 Fut": "NK=F",
-    "Hang Seng Fut": "HSI=F",
-    "China A50 Fut": "CN=F",
-    "Australia 200 Fut": "AP=F",
-    "Straits Times Fut": "ST=F",
-    "KOSPI 200 Fut": "KM=F",
-    "Taiwan Fut": "TW=F",
+    "DAX 40": "^GDAXI",
+    "FTSE 100": "^FTSE",
+    "CAC 40": "^FCHI",
+    "Nifty 50 (GIFT Proxy)": "^NSEI",
+    "Nikkei 225": "^N225",
+    "Hang Seng": "^HSI",
+    "China Shanghai": "000001.SS",
+    "Australia 200": "^AXJO",
+    "Straits Times": "^STI",
+    "KOSPI 200": "^KS11",
+    "Taiwan Index": "^TWII",
 }
 
 HEADERS = {
@@ -28,7 +29,7 @@ HEADERS = {
 }
 
 def fetch_index_data(ticker):
-    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?range=2d&interval=15m"
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?range=5d&interval=15m"
     try:
         res = requests.get(url, headers=HEADERS, timeout=10)
         if res.status_code != 200:
@@ -60,7 +61,7 @@ def fetch_index_data(ticker):
             t_0900 = ist.localize(datetime.datetime.combine(latest_date, datetime.time(9, 0)))
 
             def find_closest(target_dt):
-                valid = [c for c in candles if abs((c[0] - target_dt).total_seconds()) <= 5400]
+                valid = [c for c in candles if abs((c[0] - target_dt).total_seconds()) <= 7200]
                 return min(valid, key=lambda x: abs((x[0] - target_dt).total_seconds()))[1] if valid else None
 
             p_0700 = find_closest(t_0700)
@@ -92,7 +93,7 @@ def generate_hourly_report():
         return "⚠️ Aj Shoni/Robi bar, Market bondho."
 
     today_date = now.strftime("%d %b %Y")
-    msg = f"📊 **Futures Market Report** ({today_date})\n\n"
+    msg = f"📊 **Global Market & Futures Breakdown** ({today_date})\n\n"
 
     for name, ticker in INDICES.items():
         data = fetch_index_data(ticker)
@@ -125,4 +126,4 @@ def send_telegram(text):
 if __name__ == "__main__":
     report_text = generate_hourly_report()
     send_telegram(report_text)
-    
+        
