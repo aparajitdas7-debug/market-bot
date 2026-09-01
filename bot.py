@@ -1,9 +1,7 @@
 import datetime
 import time
-import pandas as pd
 import pytz
 import requests
-import yfinance as yf
 
 # --- Configuration ---
 TELEGRAM_TOKEN = "8978761813:AAHNrEdRRVrKGuOfRJmSEUo9TMf8xWmywQQ"
@@ -25,72 +23,74 @@ INDICES = {
     "Taiwan Fut": "TW=F",
 }
 
-def get_nearest_price(df, target_dt):
-    if df is None or df.empty:
-        return None
-    try:
-        start_window = target_dt - datetime.timedelta(minutes=45)
-        end_window = target_dt + datetime.timedelta(minutes=45)
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+}
 
-        sub = df[(df.index >= start_window) & (df.index <= end_window)]
-        if sub.empty:
+def fetch_index_data(ticker):
+    # Yahoo Finance Direct Chart API call
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?range=5d&interval=15m"
+    try:
+        res = requests.get(url, headers=HEADERS, timeout=10)
+        if res.status_code != 200:
             return None
-
-        closest_idx = (sub.index - target_dt).abs().argmin()
-        price = sub["Close"].iloc[closest_idx]
-        if isinstance(price, pd.Series):
-            price = price.iloc[0]
-        return float(price)
-    except Exception:
-        return None
-
-def fetch_hourly_futures_data(ticker):
-    try:
-        # standard yf.download implementation
-        df = yf.download(ticker, period="5d", interval="15m", progress=False)
         
-        if df is None or df.empty:
+        data = res.json()
+        result = data.get("chart", {}).get("result")
+        if not result:
             return None
-
-        if isinstance(df.columns, pd.MultiIndex):
-            df.columns = df.columns.get_level_values(0)
-
-        df = df.ffill()
+        
+        timestamps = result[0].get("timestamp", [])
+        indicators = result[0].get("indicators", {}).get("quote", [{}])[0].get("close", [])
+        
+        if not timestamps or not indicators:
+            return None
 
         ist = pytz.timezone("Asia/Kolkata")
-        if df.index.tz is None:
-            df.index = df.index.tz_localize("UTC").tz_convert(ist)
-        else:
-            df.index = df.index.tz_convert(ist)
+        
+        candles = []
+        for ts, close in zip(timestamps, indicators):
+            if close is not None:
+                dt = datetime.datetime.fromtimestamp(ts, tz=pytz.utc).astimezone(ist)
+                candles.append((dt, close))
+        
+        if not candles:
+            return None
 
-        latest_date = df.index[-1].date()
+        latest_date = candles[-1][0].date()
 
         t_0700 = ist.localize(datetime.datetime.combine(latest_date, datetime.time(7, 0)))
         t_0800 = ist.localize(datetime.datetime.combine(latest_date, datetime.time(8, 0)))
         t_0900 = ist.localize(datetime.datetime.combine(latest_date, datetime.time(9, 0)))
 
-        p_0700 = get_nearest_price(df, t_0700)
-        p_0800 = get_nearest_price(df, t_0800)
-        p_0900 = get_nearest_price(df, t_0900)
+        def find_closest(target_dt):
+            valid = [c for c in candles if abs((c[0] - target_dt).total_seconds()) <= 3600]
+            if not valid:
+                return None
+            return min(valid, key=lambda x: abs((x[0] - target_dt).total_seconds()))[1]
 
-        if p_0900 is None:
+        p_0700 = find_closest(t_0700)
+        p_0800 = find_closest(t_0800)
+        p_0900 = find_closest(t_0900)
+
+        if p_0700 is None and p_0800 is None and p_0900 is None:
             return None
 
+        diff_1 = (p_0800 - p_0700) if (p_0700 is not None and p_0800 is not None) else 0.0
+        diff_2 = (p_0900 - p_0800) if (p_0800 is not None and p_0900 is not None) else 0.0
+        
         p_start = p_0700 if p_0700 is not None else p_0800
-        if p_start is None:
-            return None
-
-        diff_7_to_8 = (p_0800 - p_0700) if (p_0700 is not None and p_0800 is not None) else 0.0
-        diff_8_to_9 = (p_0900 - p_0800) if (p_0800 is not None and p_0900 is not None) else 0.0
-        total_diff = p_0900 - p_start
+        p_end = p_0900 if p_0900 is not None else candles[-1][1]
+        
+        total_diff = (p_end - p_start) if (p_end is not None and p_start is not None) else (diff_1 + diff_2)
 
         return {
-            "diff_1": diff_7_to_8,
-            "diff_2": diff_8_to_9,
-            "total_diff": total_diff,
+            "diff_1": diff_1,
+            "diff_2": diff_2,
+            "total_diff": total_diff
         }
     except Exception as e:
-        print(f"Error for {ticker}: {e}")
+        print(f"Error fetching {ticker}: {e}")
         return None
 
 def generate_hourly_report():
@@ -103,8 +103,8 @@ def generate_hourly_report():
     msg += f"📍 **Sokal 07:00 AM -> 09:00 AM Movement**\n\n"
 
     for name, ticker in INDICES.items():
-        data = fetch_hourly_futures_data(ticker)
-        time.sleep(1)
+        data = fetch_index_data(ticker)
+        time.sleep(0.5)
 
         if data:
             emoji1 = "🟢" if data["diff_1"] >= 0 else "🔴"
