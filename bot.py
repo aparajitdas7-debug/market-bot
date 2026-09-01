@@ -9,14 +9,13 @@ import yfinance as yf
 TELEGRAM_TOKEN = "8978761813:AAHnREdrVRkGuOFRJmSEUo9TMf8xWmywQQ"
 CHAT_ID = "6514656533"
 
-# ১০০% ফিউচার টিকার (Futures Tickers for Yahoo Finance)
 INDICES = {
     "US Tech 100 Fut": "NQ=F",
     "Dow Jones Fut": "YM=F",
     "DAX 40 Fut": "FDAX=F",
     "FTSE 100 Fut": "Z=F",
     "CAC 40 Fut": "FCE=F",
-    "GIFT Nifty Fut": "IN=F",     # GIFT Nifty Futures ticker
+    "GIFT Nifty Fut": "IN=F",
     "Nikkei 225 Fut": "NK=F",
     "Hang Seng Fut": "HSI=F",
     "China A50 Fut": "CN=F",
@@ -26,24 +25,12 @@ INDICES = {
     "Taiwan Fut": "TW=F",
 }
 
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-}
-
-def get_nearest_price(df, target_hour, target_minute=0):
+def get_nearest_price(df, target_dt):
     if df is None or df.empty:
         return None
     try:
-        ist = pytz.timezone("Asia/Kolkata")
-        latest_date = df.index[-1].date()
-        target_dt = ist.localize(
-            datetime.datetime.combine(
-                latest_date, datetime.time(target_hour, target_minute)
-            )
-        )
-
-        start_window = target_dt - datetime.timedelta(minutes=60)
-        end_window = target_dt + datetime.timedelta(minutes=60)
+        start_window = target_dt - datetime.timedelta(minutes=45)
+        end_window = target_dt + datetime.timedelta(minutes=45)
 
         sub = df[(df.index >= start_window) & (df.index <= end_window)]
         if sub.empty:
@@ -59,17 +46,10 @@ def get_nearest_price(df, target_hour, target_minute=0):
 
 def fetch_hourly_futures_data(ticker):
     try:
-        session = requests.Session()
-        session.headers.update(HEADERS)
+        # standard yf.download implementation
+        df = yf.download(ticker, period="5d", interval="15m", progress=False)
         
-        t = yf.Ticker(ticker, session=session)
-        df = t.history(period="5d", interval="5m")
-        
-        # ৫ মিনিটের ডাটা না পেলে ১৫ মিনিটের ইন্ট্রাডে ডাটা ফেচ করবে
-        if df.empty:
-            df = t.history(period="5d", interval="15m")
-            
-        if df.empty:
+        if df is None or df.empty:
             return None
 
         if isinstance(df.columns, pd.MultiIndex):
@@ -83,9 +63,15 @@ def fetch_hourly_futures_data(ticker):
         else:
             df.index = df.index.tz_convert(ist)
 
-        p_0700 = get_nearest_price(df, 7, 0)
-        p_0800 = get_nearest_price(df, 8, 0)
-        p_0900 = get_nearest_price(df, 9, 0)
+        latest_date = df.index[-1].date()
+
+        t_0700 = ist.localize(datetime.datetime.combine(latest_date, datetime.time(7, 0)))
+        t_0800 = ist.localize(datetime.datetime.combine(latest_date, datetime.time(8, 0)))
+        t_0900 = ist.localize(datetime.datetime.combine(latest_date, datetime.time(9, 0)))
+
+        p_0700 = get_nearest_price(df, t_0700)
+        p_0800 = get_nearest_price(df, t_0800)
+        p_0900 = get_nearest_price(df, t_0900)
 
         if p_0900 is None:
             return None
@@ -103,7 +89,8 @@ def fetch_hourly_futures_data(ticker):
             "diff_2": diff_8_to_9,
             "total_diff": total_diff,
         }
-    except Exception:
+    except Exception as e:
+        print(f"Error for {ticker}: {e}")
         return None
 
 def generate_hourly_report():
@@ -117,7 +104,7 @@ def generate_hourly_report():
 
     for name, ticker in INDICES.items():
         data = fetch_hourly_futures_data(ticker)
-        time.sleep(1.5)
+        time.sleep(1)
 
         if data:
             emoji1 = "🟢" if data["diff_1"] >= 0 else "🔴"
