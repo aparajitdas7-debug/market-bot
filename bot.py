@@ -126,4 +126,4 @@ def send_telegram(text):
 if __name__ == "__main__":
     report_text = generate_hourly_report()
     send_telegram(report_text)
-        
+    
