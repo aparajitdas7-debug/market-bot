@@ -6,7 +6,7 @@ import requests
 import yfinance as yf
 
 # --- Configuration ---
-TELEGRAM_TOKEN = "8978761813:AAHnREdrVRkGuOFRJmSEUo9TMf8xWmywQQ"
+TELEGRAM_TOKEN = "8978761813:AAHNrEdRRVrKGuOfRJmSEUo9TMf8xWmywQQ"
 CHAT_ID = "6514656533"
 
 INDICES = {
