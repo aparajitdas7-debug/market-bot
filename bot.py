@@ -6,16 +6,17 @@ import requests
 import yfinance as yf
 
 # --- Configuration ---
-TELEGRAM_TOKEN = "8978761813:AAHNrEdRRVrKGuOfRJmSEUo9TMf8xWmywQQ"
+TELEGRAM_TOKEN = "8978761813:AAHnREdrVRkGuOFRJmSEUo9TMf8xWmywQQ"
 CHAT_ID = "6514656533"
 
+# ১০০% ফিউচার টিকার (Futures Tickers for Yahoo Finance)
 INDICES = {
     "US Tech 100 Fut": "NQ=F",
     "Dow Jones Fut": "YM=F",
     "DAX 40 Fut": "FDAX=F",
     "FTSE 100 Fut": "Z=F",
     "CAC 40 Fut": "FCE=F",
-    "GIFT Nifty Fut": "^NSEI",
+    "GIFT Nifty Fut": "IN=F",     # GIFT Nifty Futures ticker
     "Nikkei 225 Fut": "NK=F",
     "Hang Seng Fut": "HSI=F",
     "China A50 Fut": "CN=F",
@@ -25,6 +26,9 @@ INDICES = {
     "Taiwan Fut": "TW=F",
 }
 
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+}
 
 def get_nearest_price(df, target_hour, target_minute=0):
     if df is None or df.empty:
@@ -38,8 +42,8 @@ def get_nearest_price(df, target_hour, target_minute=0):
             )
         )
 
-        start_window = target_dt - datetime.timedelta(minutes=30)
-        end_window = target_dt + datetime.timedelta(minutes=30)
+        start_window = target_dt - datetime.timedelta(minutes=60)
+        end_window = target_dt + datetime.timedelta(minutes=60)
 
         sub = df[(df.index >= start_window) & (df.index <= end_window)]
         if sub.empty:
@@ -53,13 +57,18 @@ def get_nearest_price(df, target_hour, target_minute=0):
     except Exception:
         return None
 
-
 def fetch_hourly_futures_data(ticker):
     try:
-        # Yahoo Finance IP block এড়াতে রিকোয়েস্ট পাঠানো
-        df = yf.download(
-            ticker, period="2d", interval="2m", progress=False, timeout=10
-        )
+        session = requests.Session()
+        session.headers.update(HEADERS)
+        
+        t = yf.Ticker(ticker, session=session)
+        df = t.history(period="5d", interval="5m")
+        
+        # ৫ মিনিটের ডাটা না পেলে ১৫ মিনিটের ইন্ট্রাডে ডাটা ফেচ করবে
+        if df.empty:
+            df = t.history(period="5d", interval="15m")
+            
         if df.empty:
             return None
 
@@ -78,25 +87,16 @@ def fetch_hourly_futures_data(ticker):
         p_0800 = get_nearest_price(df, 8, 0)
         p_0900 = get_nearest_price(df, 9, 0)
 
-        # অন্তত ২টি প্রাইস পেলেই ক্যালকুলেশন করবে
-        diff_7_to_8 = (
-            (p_0800 - p_0700)
-            if (p_0700 is not None and p_0800 is not None)
-            else 0.0
-        )
-        diff_8_to_9 = (
-            (p_0900 - p_0800)
-            if (p_0800 is not None and p_0900 is not None)
-            else 0.0
-        )
-        total_diff = (
-            (p_0900 - p_0700)
-            if (p_0700 is not None and p_0900 is not None)
-            else (diff_7_to_8 + diff_8_to_9)
-        )
-
         if p_0900 is None:
             return None
+
+        p_start = p_0700 if p_0700 is not None else p_0800
+        if p_start is None:
+            return None
+
+        diff_7_to_8 = (p_0800 - p_0700) if (p_0700 is not None and p_0800 is not None) else 0.0
+        diff_8_to_9 = (p_0900 - p_0800) if (p_0800 is not None and p_0900 is not None) else 0.0
+        total_diff = p_0900 - p_start
 
         return {
             "diff_1": diff_7_to_8,
@@ -105,7 +105,6 @@ def fetch_hourly_futures_data(ticker):
         }
     except Exception:
         return None
-
 
 def generate_hourly_report():
     now = datetime.datetime.now(pytz.timezone("Asia/Kolkata"))
@@ -118,7 +117,7 @@ def generate_hourly_report():
 
     for name, ticker in INDICES.items():
         data = fetch_hourly_futures_data(ticker)
-        time.sleep(1.2)  # Yahoo Finance Rate-limit প্রতিরোধ করতে ১.২ সেকেন্ড বিরতি
+        time.sleep(1.5)
 
         if data:
             emoji1 = "🟢" if data["diff_1"] >= 0 else "🔴"
@@ -134,12 +133,10 @@ def generate_hourly_report():
 
     return msg
 
-
 def send_telegram(text):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     payload = {"chat_id": CHAT_ID, "text": text, "parse_mode": "Markdown"}
     requests.post(url, json=payload, timeout=10)
-
 
 if __name__ == "__main__":
     report_text = generate_hourly_report()
